@@ -1,3 +1,5 @@
+// File: lib/__tests__/supabase-server.test.ts
+// Role: Tests Supabase server client construction (service role)
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createClientMock = vi.fn(() => ({ mocked: true }));

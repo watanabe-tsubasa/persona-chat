@@ -1,3 +1,5 @@
+// File: lib/__tests__/ai.test.ts
+// Role: Tests OpenAI client creation with env
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({

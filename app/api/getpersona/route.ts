@@ -1,5 +1,7 @@
+// File: app/api/getpersona/route.ts
+// Role: Persona retrieval endpoint (Edge). Fetches persona by id
 import type { NextRequest } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { personaRepository } from "@/domains/personas/repositories/personaRepository";
 
 export const runtime = "edge";
 
@@ -12,15 +14,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const supabase = supabaseServer();
-    const { data, error } = await supabase
-      .from("personas")
-      .select("id, name, persona_prompt, examples")
-      .eq("id", id)
-      .single();
-
-    if (error || !data) {
-      console.error("Failed to fetch persona", error);
+    const data = await personaRepository.getById(id);
+    if (!data) {
+      console.error("Failed to fetch persona");
       return new Response(JSON.stringify({ error: "not found" }), {
         status: 404,
       });

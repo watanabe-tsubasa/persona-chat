@@ -1,55 +1,44 @@
+// File: app/api/chat/route.ts
+// Role: Chat endpoint (Edge). Validates input, fetches persona, streams AI response
 import { streamText } from "ai";
 import type { NextRequest } from "next/server";
+import { personaRepository } from "@/domains/personas/repositories/personaRepository";
 import { openai } from "@/lib/ai";
-import { supabaseServer } from "@/lib/supabase-server";
+import { LLM_MODELS } from "@/lib/llm/models";
+import { logger } from "@/lib/logger";
+import { ChatRequestSchema } from "@/lib/schemas/chat";
+import { clipMessages } from "@/lib/utils/messages";
 
 export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
-    type ChatPart =
-      | { type: "text"; text: string }
-      | { type: string; text?: string };
-    type ChatMessage = {
-      role: "user" | "assistant" | "system";
-      parts?: ChatPart[];
-    };
+    const json = await req.json();
+    const parsed = ChatRequestSchema.safeParse(json);
+    if (!parsed.success) {
+      return new Response(
+        JSON.stringify({
+          error: { code: "BAD_REQUEST", message: "invalid body" },
+        }),
+        { status: 400 },
+      );
+    }
+    const body = parsed.data;
 
-    const body = (await req.json()) as {
-      personaId?: string;
-      messages: ChatMessage[];
-    };
-
-    // 🔍 デバッグログ
-    console.log("=== /api/chat request body ===");
-    console.dir(body, { depth: null });
-    console.log("==============================");
+    logger.debug("/api/chat body", body);
 
     const { personaId, messages } = body;
-
-    if (!Array.isArray(messages)) {
-      console.error("❌ messages が配列ではありません", messages);
-      return new Response(JSON.stringify({ error: "messages is required" }), {
-        status: 400,
-      });
-    }
 
     // personaId が無ければデフォルト人格を使う
     let system = "あなたは親切なアシスタントです。";
     const fixedPairs: { role: "user" | "assistant"; content: string }[] = [];
 
     if (personaId) {
-      const supabase = supabaseServer();
-      const { data: persona, error } = await supabase
-        .from("personas")
-        .select("persona_prompt, examples")
-        .eq("id", personaId)
-        .single();
-
-      if (!error && persona) {
+      const persona = await personaRepository.getById(personaId);
+      if (persona) {
         system = persona.persona_prompt;
         if (persona.examples) {
-          const blocks = (persona.examples as string).split(/\n\n+/);
+          const blocks = persona.examples.split(/\n\n+/);
           for (const b of blocks) {
             const m = b.match(/user:\s*([\s\S]*?)\nassistant:\s*([\s\S]*)$/);
             if (m) {
@@ -59,26 +48,16 @@ export async function POST(req: NextRequest) {
           }
         }
       } else {
-        console.error(
-          "⚠️ personaId はあるが Supabase から取得できません",
-          error,
-        );
+        logger.warn("personaId provided but not found");
       }
     }
 
     // parts を string に変換
-    const clipped = messages.slice(-6).map((m) => {
-      const textParts =
-        m.parts?.map((p) => (p.type === "text" ? p.text : "")).join("") ?? "";
-      return { role: m.role, content: textParts };
-    });
-
-    console.log("=== /api/chat merged messages ===");
-    console.dir([...fixedPairs, ...clipped], { depth: null });
-    console.log("=================================");
+    const clipped = clipMessages(messages, 6);
+    logger.debug("/api/chat merged messages", [...fixedPairs, ...clipped]);
 
     const result = streamText({
-      model: openai("gpt-5-chat-latest"),
+      model: openai(LLM_MODELS.chatAssistant),
       system,
       messages: [...fixedPairs, ...clipped],
     });
@@ -86,9 +65,10 @@ export async function POST(req: NextRequest) {
     // useChat 用レスポンス
     return result.toUIMessageStreamResponse();
   } catch (e: unknown) {
-    console.error("❌ /api/chat failed", e);
-    return new Response(JSON.stringify({ error: "chat failed" }), {
-      status: 500,
-    });
+    logger.error("/api/chat failed", e);
+    return new Response(
+      JSON.stringify({ error: { code: "INTERNAL", message: "chat failed" } }),
+      { status: 500 },
+    );
   }
 }

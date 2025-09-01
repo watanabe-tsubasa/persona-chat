@@ -1,3 +1,5 @@
+// File: lib/__tests__/persona.test.ts
+// Role: Tests persona JSON parsing, truncation, and examples formatting
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock lib/ai to avoid real client usage

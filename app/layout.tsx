@@ -1,3 +1,5 @@
+// File: app/layout.tsx
+// Role: Root layout applying fonts and globals
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";

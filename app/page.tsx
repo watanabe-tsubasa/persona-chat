@@ -1,21 +1,17 @@
+// File: app/page.tsx
+// Role: Main client page for persona creation, debug panel, and chat UI
 "use client";
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
+import PersonaDebugPanel from "./components/PersonaDebugPanel";
 
 export default function Page() {
   const [personaId, setPersonaId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [logs, setLogs] = useState("");
-  const [manualPersonaInput, setManualPersonaInput] = useState("");
-  type Persona = {
-    id: string;
-    name: string;
-    persona_prompt: string;
-    examples: string | null;
-  };
-  const [personaInfo, setPersonaInfo] = React.useState<Persona | null>(null);
+  // Debug UI 内部へ移動: manualPersonaInput, personaInfo はパネル内に保持
 
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
@@ -25,68 +21,20 @@ export default function Page() {
 
   const [input, setInput] = React.useState("");
 
-  async function createPersona() {
+  const createPersona = useCallback(async () => {
     const r = await fetch("/api/personas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: "demo", name, logs }),
     });
-    const data = await r.json();
+    const data = (await r.json()) as { personaId?: string };
     if (data.personaId) setPersonaId(data.personaId);
-  }
+  }, [name, logs]);
 
   return (
     <main className="max-w-3xl mx-auto p-6 space-y-6">
       {/* Debug: manually set personaId and fetch persona info */}
-      <section className="space-y-3 border rounded p-3">
-        <div className="font-semibold">Debug: Persona ID</div>
-        <div className="flex gap-2 items-center">
-          <input
-            className="border p-2 flex-1"
-            placeholder="personaId を手動入力"
-            value={manualPersonaInput}
-            onChange={(e) => setManualPersonaInput(e.target.value)}
-          />
-          <button
-            className="bg-gray-700 text-white px-3 py-2 rounded"
-            onClick={() => setPersonaId(manualPersonaInput || null)}
-            type="button"
-          >
-            セット
-          </button>
-          <button
-            className="bg-indigo-600 text-white px-3 py-2 rounded disabled:opacity-50"
-            onClick={async () => {
-              const id = manualPersonaInput || personaId;
-              if (!id) return;
-              try {
-                const r = await fetch(
-                  `/api/getpersona?id=${encodeURIComponent(id)}`,
-                );
-                const data = await r.json();
-                setPersonaInfo(data.persona ?? null);
-              } catch (err) {
-                console.error("fetch persona failed", err);
-                setPersonaInfo(null);
-              }
-            }}
-            disabled={!manualPersonaInput && !personaId}
-            type="button"
-          >
-            取得
-          </button>
-        </div>
-        {personaId && (
-          <div className="text-sm text-gray-600">
-            現在の Persona ID: {personaId}
-          </div>
-        )}
-        {personaInfo && (
-          <pre className="text-xs bg-gray-50 border rounded p-2 overflow-auto max-h-60">
-            {JSON.stringify(personaInfo, null, 2)}
-          </pre>
-        )}
-      </section>
+      <PersonaDebugPanel personaId={personaId} onSetPersonaId={setPersonaId} />
       {!personaId && (
         <section className="space-y-3">
           <input
@@ -136,8 +84,9 @@ export default function Page() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (input.trim()) {
-                sendMessage({ text: input }, { body: { personaId } });
+              const text = input.trim();
+              if (text) {
+                sendMessage({ text }, { body: { personaId } });
                 setInput("");
               }
             }}

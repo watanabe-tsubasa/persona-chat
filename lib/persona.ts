@@ -1,5 +1,9 @@
+// File: lib/persona.ts
+// Role: Persona generation helpers (LLM calls) and output formatting
 import { generateText } from "ai";
 import { openai } from "./ai";
+import { ExamplesLLMSchema, PersonaLLMSchema, safeParseJson } from "./llm/json";
+import { LLM_DEFAULTS, LLM_MODELS } from "./llm/models";
 
 export async function generatePersonaPromptFromLogs(logs: string) {
   const sys =
@@ -9,10 +13,10 @@ export async function generatePersonaPromptFromLogs(logs: string) {
     '出力形式: {"persona_prompt": string, "style_rules": string[]}';
 
   const { text } = await generateText({
-    model: openai("gpt-5"),
+    model: openai(LLM_MODELS.personaGenerate),
     system: sys,
     prompt: logs.slice(0, 60_000),
-    temperature: 0.2,
+    temperature: LLM_DEFAULTS.personaTemperature,
   });
 
   // // デバッグ用ログ
@@ -20,24 +24,10 @@ export async function generatePersonaPromptFromLogs(logs: string) {
   // console.log(text);
   // console.log("=========================================");
 
-  // JSONパース前に余分な ```json ... ``` を削除
-  let raw = text.trim();
-  raw = raw
-    .replace(/^```(json)?/i, "")
-    .replace(/```$/, "")
-    .trim();
-
-  type PersonaParsed = { persona_prompt?: string; style_rules?: string[] };
-  let parsed: PersonaParsed = {};
-  try {
-    parsed = JSON.parse(raw);
-  } catch (e) {
-    console.error("JSON parse failed in generatePersonaPromptFromLogs", e, raw);
-    parsed = {
-      persona_prompt: "ユーザーの口調を模倣してください。",
-      style_rules: [],
-    };
-  }
+  const parsed = safeParseJson(text, PersonaLLMSchema, {
+    persona_prompt: "ユーザーの口調を模倣してください。",
+    style_rules: [],
+  });
 
   const personaPrompt =
     `${parsed.persona_prompt ?? ""}\n` +
@@ -54,10 +44,10 @@ export async function generateFixedExamples(personaPrompt: string) {
     '出力形式: {"examples":[{"user": string, "assistant": string}, ...]}';
 
   const { text } = await generateText({
-    model: openai("gpt-5"),
+    model: openai(LLM_MODELS.personaGenerate),
     system: sys,
     prompt: personaPrompt,
-    temperature: 0.4,
+    temperature: LLM_DEFAULTS.examplesTemperature,
   });
 
   // // デバッグ用ログ
@@ -65,22 +55,8 @@ export async function generateFixedExamples(personaPrompt: string) {
   // console.log(text);
   // console.log("========================================");
 
-  // パース前に余分な ```json ... ``` を削除
-  let raw = text.trim();
-  raw = raw
-    .replace(/^```(json)?/i, "")
-    .replace(/```$/, "")
-    .trim();
-
-  type Example = { user?: string; assistant?: string };
-  let examples: Example[] = [];
-  try {
-    const parsed = JSON.parse(raw);
-    examples = parsed.examples ?? [];
-  } catch (e) {
-    console.error("JSON parse failed in generateFixedExamples", e, raw);
-    examples = [];
-  }
+  const parsed = safeParseJson(text, ExamplesLLMSchema, { examples: [] });
+  const examples = parsed.examples ?? [];
 
   const examplesText = examples
     .slice(0, 2)
