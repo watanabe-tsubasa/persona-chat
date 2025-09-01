@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 // Mock AI SDK hooks/classes used by the page component
@@ -13,7 +14,7 @@ import Page from "../page";
 
 describe("Home Page", () => {
   it("renders persona creation controls by default", () => {
-    render(<Page />);
+    render(React.createElement(Page));
     // Button label is in Japanese in the component
     expect(
       screen.getByRole("button", { name: "人格を作成" }),
