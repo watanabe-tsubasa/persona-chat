@@ -1,14 +1,19 @@
-import { NextRequest } from 'next/server';
-import { supabaseServer } from '@/lib/supabase-server';
-import { generatePersonaPromptFromLogs, generateFixedExamples } from '@/lib/persona';
+import type { NextRequest } from "next/server";
+import {
+  generateFixedExamples,
+  generatePersonaPromptFromLogs,
+} from "@/lib/persona";
+import { supabaseServer } from "@/lib/supabase-server";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
     const { userId, name, logs } = await req.json();
     if (!userId || !name || !logs) {
-      return new Response(JSON.stringify({ error: 'missing params' }), { status: 400 });
+      return new Response(JSON.stringify({ error: "missing params" }), {
+        status: 400,
+      });
     }
 
     const { personaPrompt } = await generatePersonaPromptFromLogs(logs);
@@ -16,8 +21,13 @@ export async function POST(req: NextRequest) {
 
     const supabase = supabaseServer();
     const { data, error } = await supabase
-      .from('personas')
-      .insert({ user_id: userId, name, persona_prompt: personaPrompt, examples: examplesText })
+      .from("personas")
+      .insert({
+        user_id: userId,
+        name,
+        persona_prompt: personaPrompt,
+        examples: examplesText,
+      })
       .select()
       .single();
 
@@ -28,8 +38,10 @@ export async function POST(req: NextRequest) {
       personaPrompt,
       examples: examplesText,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error(e);
-    return new Response(JSON.stringify({ error: 'failed to create persona' }), { status: 500 });
+    return new Response(JSON.stringify({ error: "failed to create persona" }), {
+      status: 500,
+    });
   }
 }

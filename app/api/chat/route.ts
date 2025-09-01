@@ -1,13 +1,24 @@
-import { NextRequest } from 'next/server';
-import { streamText } from 'ai';
-import { openai } from '@/lib/ai';
-import { supabaseServer } from '@/lib/supabase-server';
+import { streamText } from "ai";
+import type { NextRequest } from "next/server";
+import { openai } from "@/lib/ai";
+import { supabaseServer } from "@/lib/supabase-server";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    type ChatPart =
+      | { type: "text"; text: string }
+      | { type: string; text?: string };
+    type ChatMessage = {
+      role: "user" | "assistant" | "system";
+      parts?: ChatPart[];
+    };
+
+    const body = (await req.json()) as {
+      personaId?: string;
+      messages: ChatMessage[];
+    };
 
     // 🔍 デバッグログ
     console.log("=== /api/chat request body ===");
@@ -18,19 +29,21 @@ export async function POST(req: NextRequest) {
 
     if (!Array.isArray(messages)) {
       console.error("❌ messages が配列ではありません", messages);
-      return new Response(JSON.stringify({ error: 'messages is required' }), { status: 400 });
+      return new Response(JSON.stringify({ error: "messages is required" }), {
+        status: 400,
+      });
     }
 
     // personaId が無ければデフォルト人格を使う
     let system = "あなたは親切なアシスタントです。";
-    let fixedPairs: any[] = [];
+    const fixedPairs: { role: "user" | "assistant"; content: string }[] = [];
 
     if (personaId) {
       const supabase = supabaseServer();
       const { data: persona, error } = await supabase
-        .from('personas')
-        .select('persona_prompt, examples')
-        .eq('id', personaId)
+        .from("personas")
+        .select("persona_prompt, examples")
+        .eq("id", personaId)
         .single();
 
       if (!error && persona) {
@@ -40,21 +53,23 @@ export async function POST(req: NextRequest) {
           for (const b of blocks) {
             const m = b.match(/user:\s*([\s\S]*?)\nassistant:\s*([\s\S]*)$/);
             if (m) {
-              fixedPairs.push({ role: 'user', content: m[1] });
-              fixedPairs.push({ role: 'assistant', content: m[2] });
+              fixedPairs.push({ role: "user", content: m[1] });
+              fixedPairs.push({ role: "assistant", content: m[2] });
             }
           }
         }
       } else {
-        console.error("⚠️ personaId はあるが Supabase から取得できません", error);
+        console.error(
+          "⚠️ personaId はあるが Supabase から取得できません",
+          error,
+        );
       }
     }
 
     // parts を string に変換
-    const clipped = messages.slice(-6).map((m: any) => {
-      const textParts = m.parts
-        ?.map((p: any) => (p.type === 'text' ? p.text : ''))
-        .join('') ?? '';
+    const clipped = messages.slice(-6).map((m) => {
+      const textParts =
+        m.parts?.map((p) => (p.type === "text" ? p.text : "")).join("") ?? "";
       return { role: m.role, content: textParts };
     });
 
@@ -62,16 +77,18 @@ export async function POST(req: NextRequest) {
     console.dir([...fixedPairs, ...clipped], { depth: null });
     console.log("=================================");
 
-    const result = await streamText({
-      model: openai('gpt-4o'),
+    const result = streamText({
+      model: openai("gpt-5-chat-latest"),
       system,
       messages: [...fixedPairs, ...clipped],
     });
 
     // useChat 用レスポンス
     return result.toUIMessageStreamResponse();
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("❌ /api/chat failed", e);
-    return new Response(JSON.stringify({ error: 'chat failed' }), { status: 500 });
+    return new Response(JSON.stringify({ error: "chat failed" }), {
+      status: 500,
+    });
   }
 }
